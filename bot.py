@@ -9,11 +9,18 @@ from dotenv import load_dotenv
 import requests
 import json
 import os.path
+import sqlite3
 
 load_dotenv()
 
 TOKEN = os.getenv('BOT_TOKEN')
 API_KEY = os.getenv('API_KEY')
+
+conn = sqlite3.connect('database.db')
+cur = conn.cursor()
+cur.execute('CREATE TABLE IF NOT EXISTS users(chat_id INT PRIMARY KEY, score INT, cities TEXT)')
+conn.commit()
+conn.close()
 
 gc = geonamescache.GeonamesCache()
 bot = telebot.TeleBot(TOKEN)
@@ -21,6 +28,7 @@ bot = telebot.TeleBot(TOKEN)
 all_cities = gc.get_cities()
 cities = []
 score = 0
+
 
 def find_city(letter):
     letter = letter.upper()
@@ -123,10 +131,18 @@ def send_city_weather(city, id, lat, lon):
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    global score
-    score = 0
-    cities.clear()
-    bot.send_message(message.chat.id, "Игра запущена! Назови город первым")
+    try:
+        score = 0
+        cities = []
+        json_str = json.dumps(cities)
+        conn = sqlite3.connect('database.db')
+        cur = conn.cursor()
+        cur.execute(f"INSERT INTO users(chat_id, score, cities) VALUES({message.chat.id}, {score}, '{json_str}')")
+        conn.commit()
+        conn.close()
+        bot.send_message(message.chat.id, "Игра запущена! Назови город первым")
+    except sqlite3.IntegrityError as e:
+        print(f'Integrity error occurred: {e}')
 
 @bot.message_handler(commands=['stop'])
 def stop(message):
@@ -145,6 +161,13 @@ def help(message):
 @bot.message_handler(content_types=['text'])
 def message_handler(message):
     try:
+        conn = sqlite3.connect('database.db')
+        cur = conn.cursor()
+        cur.execute('SELECT chat_id, score, cities FROM users')
+        print(cur.fetchone())
+        print(cur.fetchone())
+        print(cur.fetchone())
+        conn.close()
         global score
         city = message.text
         bot_last_letter = get_last_letter()
